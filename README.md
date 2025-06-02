@@ -6,7 +6,7 @@ Toshiba air conditioner has an option for connecting remote module purchased sep
 
 This component use ESPHome UART to connect with Toshiba AC and communicates directly with Home Assistant.
 
-<a href="https://www.buymeacoffee.com/pedobryk" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 
 ### Supported Toshiba units
 
@@ -183,4 +183,4 @@ https://github.com/toremick/shorai-esp32
 
 https://github.com/Vpowgh/TConnect
 
-Discord channel: https://discord.gg/wYYFawvqfr
+
