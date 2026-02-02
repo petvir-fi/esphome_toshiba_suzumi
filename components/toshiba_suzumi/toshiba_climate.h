@@ -50,7 +50,7 @@ class ToshibaClimateUart : public PollingComponent, public climate::Climate, pub
   void set_pwr_select(select::Select *pws_select) { pwr_select_ = pws_select; }
   void set_horizontal_swing(bool enabled) { horizontal_swing_ = enabled; }
   void disable_wifi_led(bool disabled) { wifi_led_disabled_ = disabled; }
-  void set_supported_presets(const std::vector<std::string> &presets) { supported_presets_ = presets; }
+  void set_supported_presets(const std::vector<const char*> &presets) { supported_presets_ = presets; }
   void set_min_temp(uint8_t min_temp) { min_temp_ = min_temp; }
 
  protected:
@@ -72,7 +72,7 @@ class ToshibaClimateUart : public PollingComponent, public climate::Climate, pub
   bool horizontal_swing_ = false;
   uint8_t min_temp_ = 17; // default min temp for units without 8° heating mode
   bool wifi_led_disabled_ = false;
-  std::vector<std::string> supported_presets_;
+  std::vector<const char*> supported_presets_;
 
   void enqueue_command_(const ToshibaCommand &command);
   void send_to_uart(const ToshibaCommand command);

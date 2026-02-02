@@ -8,9 +8,37 @@ This component use ESPHome UART to connect with Toshiba AC and communicates dire
 
 
 
-### Supported Toshiba units
+## ESPHome versions
+Current main branch supports latest ESPHome **2026.1**. There have been some internal changes in climate entity in ESPHome which makes it incompatible with previous ESPHome versions.
 
-Any unit which have an option to purchase o wifi adapter RB-N105S-G/RB-N106S-G:
+If you use ESPHome **2025.10 or earlier**, use tag `2025.10` like this:
+
+```
+external_components:
+  - source: 
+      type: git
+      url: https://github.com/pedobry/esphome_toshiba_suzumi
+      ref: "2025.10"
+    components: [toshiba_suzumi]
+    refresh: 1min
+```
+If you use ESPHome **2025.11 or 2025.12**, use tag `2025.12` like this:
+
+```
+external_components:
+  - source: 
+      type: git
+      url: https://github.com/pedobry/esphome_toshiba_suzumi
+      ref: "2025.12"
+    components: [toshiba_suzumi]
+    refresh: 1min
+```
+
+These older version won't be maintained, I'd recommend to upgrade to ESPHome 2026.1
+
+## Supported Toshiba units
+
+Any unit which have an option to purchase a WiFi adapter RB-N105S-G/RB-N106S-G:
 
 * Seiya RAS-B24 J2KVG-E
 * Suzumi Plus RAS-B18, B22 and B24 PKVSG-E
@@ -59,9 +87,9 @@ AC unit has a wifi connector CN22 with an extension cable, usually with pink and
 
 The matching connector is JST PA2.0 ([Aliexpress](https://www.aliexpress.com/item/1005007176563512.html))
 
-‼️‼️‼️<br>
+‼️‼️<br>
 **WARNING: Do NOT connect PIN 5 (the outermost pink wire) to anything. Double check that you have wired the ESP device correctly. Only connect and disconnect the ESP while the AC unit is disconnected from main power. Shorts or wrong wiring will damage AC unit board.**<br>
-‼️‼️‼️
+‼️‼️
 
 ## Installation
 
@@ -117,7 +145,7 @@ climate:
 ...
 ```
 
-The component can be installed locally by downloading to `components` directory or directly from Github.
+The component is automatically installed directly from Github during compilation.
 
 When configured correctly, new ESPHome device will appear in Home Assistant integrations and you'll be asked to provide encryption key (it's in the node configuration from step 2.). All entities then populate automatically.
 
@@ -165,22 +193,6 @@ button:
 and then watching ESPHome logs for data:
 
 ![ESPHome log](/images/scan_log.png)
-
-### ESPHome older than 2023.3.0
-
-There is a change in internal implementation of climate control in 2023.3.0 - the fan mode Quiet is implemented as regular fan mode. As a result, the implementation of Quiet mode as custom fan mode won't work anymore.
-
-It was fixed in current code, but users with ESPHome older than 2023.3.0 needs to use older tag:
-
-* users with **ESPHome 2023.3.0** or newer should use branch master
-
-    `url: https://github.com/pedobry/esphome_toshiba_suzumi`
-
-* users with **ESPHome 2023.2.x and older** should use branch 2023.2.0:
-
-    ```
-    url: https://github.com/pedobry/esphome_toshiba_suzumi
-    ref: 2023.2.0
     ```
 
 ## Links
