@@ -44,11 +44,22 @@ class ToshibaClimateUart : public PollingComponent, public climate::Climate, pub
   void dump_config() override;
   void update() override;
   void scan();
+  void set_wifi_led(bool enabled);
   float get_setup_priority() const override { return setup_priority::LATE; }
 
+  void set_indoor_temp_sensor(sensor::Sensor *indoor_temp_sensor) { indoor_temp_sensor_ = indoor_temp_sensor; }
   void set_outdoor_temp_sensor(sensor::Sensor *outdoor_temp_sensor) { outdoor_temp_sensor_ = outdoor_temp_sensor; }
+  void set_cdu_td_temp_sensor(sensor::Sensor *sensor) { cdu_td_temp_sensor_ = sensor; }
+  void set_cdu_ts_temp_sensor(sensor::Sensor *sensor) { cdu_ts_temp_sensor_ = sensor; }
+  void set_cdu_te_temp_sensor(sensor::Sensor *sensor) { cdu_te_temp_sensor_ = sensor; }
+  void set_cdu_load_sensor(sensor::Sensor *sensor) { cdu_load_sensor_ = sensor; }
+  void set_cdu_iac_sensor(sensor::Sensor *sensor) { cdu_iac_sensor_ = sensor; }
+  void set_fcu_tc_temp_sensor(sensor::Sensor *sensor) { fcu_tc_temp_sensor_ = sensor; }
+  void set_fcu_tcj_temp_sensor(sensor::Sensor *sensor) { fcu_tcj_temp_sensor_ = sensor; }
+  void set_fcu_fan_rpm_sensor(sensor::Sensor *sensor) { fcu_fan_rpm_sensor_ = sensor; }
   void set_pwr_select(select::Select *pws_select) { pwr_select_ = pws_select; }
   void set_horizontal_swing(bool enabled) { horizontal_swing_ = enabled; }
+  void disable_heat_mode(bool disabled) { heat_mode_disabled_ = disabled; }
   void disable_wifi_led(bool disabled) { wifi_led_disabled_ = disabled; }
   void set_supported_presets(const std::vector<const char*> &presets) { supported_presets_ = presets; }
   void set_min_temp(uint8_t min_temp) { min_temp_ = min_temp; }
@@ -68,9 +79,19 @@ class ToshibaClimateUart : public PollingComponent, public climate::Climate, pub
   STATE power_state_ = STATE::OFF;
   optional<SPECIAL_MODE> special_mode_ = SPECIAL_MODE::STANDARD;
   select::Select *pwr_select_ = nullptr;
+  sensor::Sensor *indoor_temp_sensor_ = nullptr;
   sensor::Sensor *outdoor_temp_sensor_ = nullptr;
+  sensor::Sensor *cdu_td_temp_sensor_ = nullptr;
+  sensor::Sensor *cdu_ts_temp_sensor_ = nullptr;
+  sensor::Sensor *cdu_te_temp_sensor_ = nullptr;
+  sensor::Sensor *cdu_load_sensor_ = nullptr;
+  sensor::Sensor *cdu_iac_sensor_ = nullptr;
+  sensor::Sensor *fcu_tc_temp_sensor_ = nullptr;
+  sensor::Sensor *fcu_tcj_temp_sensor_ = nullptr;
+  sensor::Sensor *fcu_fan_rpm_sensor_ = nullptr;
   bool horizontal_swing_ = false;
   uint8_t min_temp_ = 17; // default min temp for units without 8° heating mode
+  bool heat_mode_disabled_ = false;
   bool wifi_led_disabled_ = false;
   std::vector<const char*> supported_presets_;
 

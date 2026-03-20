@@ -144,11 +144,8 @@ void ToshibaClimateUart::setup() {
   this->start_handshake();
   // load initial sensor data from the unit
   this->getInitData();
-
-  if (this->wifi_led_disabled_) {
-    // Disable Wifi LED
-    this->sendCmd(ToshibaCommandType::WIFI_LED, 128);
-  }
+  // Set Wi-Fi LED initial state
+  this->set_wifi_led(!this->wifi_led_disabled_);
 }
 
 /**
@@ -177,7 +174,7 @@ void ToshibaClimateUart::process_command_queue_() {
     if (newCommand.cmd == ToshibaCommandType::DELAY) {
       this->command_queue_.erase(this->command_queue_.begin());
       return;
-    }    
+    }
     this->send_to_uart(this->command_queue_.front());
     this->command_queue_.erase(this->command_queue_.begin());
   }
@@ -220,6 +217,14 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
     case 17:  // response to requestData with the actual value of sensor/setting
       sensor = static_cast<ToshibaCommandType>(rawData[14]);
       value = rawData[15];
+      break;
+    case 22:  // extended status message (e.g., ODU_STATUS / IDU_STATUS)
+      sensor = static_cast<ToshibaCommandType>(rawData[12]);
+      value = 0;
+      break;
+    case 24:  // extended status message (e.g., ODU_STATUS / IDU_STATUS)
+      sensor = static_cast<ToshibaCommandType>(rawData[14]);
+      value = 0;
       break;
     default:
       ESP_LOGW(TAG, "Received unknown message with length: %d and value %s", length,
@@ -277,6 +282,9 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
     case ToshibaCommandType::ROOM_TEMP:
       ESP_LOGI(TAG, "Received room temp: %d °C", value);
       this->current_temperature = value;
+      if (indoor_temp_sensor_ != nullptr) {
+        indoor_temp_sensor_->publish_state((int8_t) value);
+      }
       break;
     case ToshibaCommandType::OUTDOOR_TEMP:
       if (outdoor_temp_sensor_ != nullptr) {
@@ -323,6 +331,42 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
       }
       break;
     }
+    case ToshibaCommandType::ODU_STATUS: {
+      // Outdoor unit status - data offset depends on message length
+      uint8_t odu_offset = (length == 22) ? 13 : 15;
+      ESP_LOGI(TAG, "Received ODU status");
+      if (cdu_td_temp_sensor_ != nullptr) {
+        cdu_td_temp_sensor_->publish_state(static_cast<int8_t>(rawData[odu_offset + 0]));
+      }
+      if (cdu_ts_temp_sensor_ != nullptr) {
+        cdu_ts_temp_sensor_->publish_state(static_cast<int8_t>(rawData[odu_offset + 1]));
+      }
+      if (cdu_te_temp_sensor_ != nullptr) {
+        cdu_te_temp_sensor_->publish_state(static_cast<int8_t>(rawData[odu_offset + 2]));
+      }
+      if (cdu_load_sensor_ != nullptr) {
+        cdu_load_sensor_->publish_state(rawData[odu_offset + 3] / 1.7f);
+      }
+      if (cdu_iac_sensor_ != nullptr) {
+        cdu_iac_sensor_->publish_state(rawData[odu_offset + 6]);
+      }
+      break;
+    }
+    case ToshibaCommandType::IDU_STATUS: {
+      // Indoor unit status - data offset depends on message length
+      uint8_t idu_offset = (length == 22) ? 13 : 15;
+      ESP_LOGI(TAG, "Received IDU status");
+      if (fcu_tc_temp_sensor_ != nullptr) {
+        fcu_tc_temp_sensor_->publish_state(static_cast<int8_t>(rawData[idu_offset + 0]));
+      }
+      if (fcu_tcj_temp_sensor_ != nullptr) {
+        fcu_tcj_temp_sensor_->publish_state(static_cast<int8_t>(rawData[idu_offset + 1]));
+      }
+      if (fcu_fan_rpm_sensor_ != nullptr) {
+        fcu_fan_rpm_sensor_->publish_state(rawData[idu_offset + 2]);
+      }
+      break;
+    }
     default:
       ESP_LOGW(TAG, "Unknown sensor: %d with value %d", sensor, value);
       break;
@@ -336,6 +380,30 @@ void ToshibaClimateUart::dump_config() {
   LOG_CLIMATE("", "Thermostat", this);
   if (outdoor_temp_sensor_ != nullptr) {
     LOG_SENSOR("", "Outdoor Temp", this->outdoor_temp_sensor_);
+  }
+  if (cdu_td_temp_sensor_ != nullptr) {
+    LOG_SENSOR("", "CDU Td Temp", this->cdu_td_temp_sensor_);
+  }
+  if (cdu_ts_temp_sensor_ != nullptr) {
+    LOG_SENSOR("", "CDU Ts Temp", this->cdu_ts_temp_sensor_);
+  }
+  if (cdu_te_temp_sensor_ != nullptr) {
+    LOG_SENSOR("", "CDU Te Temp", this->cdu_te_temp_sensor_);
+  }
+  if (cdu_load_sensor_ != nullptr) {
+    LOG_SENSOR("", "CDU Load", this->cdu_load_sensor_);
+  }
+  if (cdu_iac_sensor_ != nullptr) {
+    LOG_SENSOR("", "CDU IAC", this->cdu_iac_sensor_);
+  }
+  if (fcu_tc_temp_sensor_ != nullptr) {
+    LOG_SENSOR("", "FCU Tc Temp", this->fcu_tc_temp_sensor_);
+  }
+  if (fcu_tcj_temp_sensor_ != nullptr) {
+    LOG_SENSOR("", "FCU Tcj Temp", this->fcu_tcj_temp_sensor_);
+  }
+  if (fcu_fan_rpm_sensor_ != nullptr) {
+    LOG_SENSOR("", "FCU Fan RPM", this->fcu_fan_rpm_sensor_);
   }
   if (pwr_select_ != nullptr) {
     LOG_SELECT("", "Power selector", this->pwr_select_);
@@ -502,11 +570,33 @@ void ToshibaClimateUart::control(const climate::ClimateCall &call) {
 
 ClimateTraits ToshibaClimateUart::traits() {
   auto traits = climate::ClimateTraits();
-  traits.set_supported_modes({climate::CLIMATE_MODE_OFF, climate::CLIMATE_MODE_HEAT_COOL, climate::CLIMATE_MODE_COOL,
-                              climate::CLIMATE_MODE_HEAT, climate::CLIMATE_MODE_DRY, climate::CLIMATE_MODE_FAN_ONLY});
-  if (this->horizontal_swing_) {
-    traits.set_supported_swing_modes({climate::CLIMATE_SWING_OFF, climate::CLIMATE_SWING_VERTICAL,
-                                      climate::CLIMATE_SWING_HORIZONTAL, climate::CLIMATE_SWING_BOTH});
+
+  if (this -> heat_mode_disabled_) {
+    traits.set_supported_modes({
+      climate::CLIMATE_MODE_OFF,
+      climate::CLIMATE_MODE_HEAT_COOL,
+      climate::CLIMATE_MODE_COOL,
+      climate::CLIMATE_MODE_DRY,
+      climate::CLIMATE_MODE_FAN_ONLY
+    });
+  } else {
+    traits.set_supported_modes({
+      climate::CLIMATE_MODE_OFF,
+      climate::CLIMATE_MODE_HEAT_COOL,
+      climate::CLIMATE_MODE_COOL,
+      climate::CLIMATE_MODE_HEAT,
+      climate::CLIMATE_MODE_DRY,
+      climate::CLIMATE_MODE_FAN_ONLY
+    });
+  }
+
+  if (this -> horizontal_swing_) {
+    traits.set_supported_swing_modes({
+      climate::CLIMATE_SWING_OFF,
+      climate::CLIMATE_SWING_VERTICAL,
+      climate::CLIMATE_SWING_HORIZONTAL,
+      climate::CLIMATE_SWING_BOTH
+    });
   } else {
     traits.set_supported_swing_modes({climate::CLIMATE_SWING_OFF, climate::CLIMATE_SWING_VERTICAL});
   }
@@ -560,6 +650,21 @@ void ToshibaClimateUart::scan() {
   ESP_LOGI(TAG, "Scan started.");
   for (uint8_t i = 128; i < 255; i++) {
     this->requestData(static_cast<ToshibaCommandType>(i));
+  }
+}
+
+/**
+ * Expose Wi-Fi LED control
+ */
+void ToshibaClimateUart::set_wifi_led(bool enabled) {
+  if (enabled) {
+    ESP_LOGI(TAG, "Turning ON Wi-Fi LED");
+    this->sendCmd(ToshibaCommandType::WIFI_LED_1, 0x05);
+    this->sendCmd(ToshibaCommandType::WIFI_LED_2, 0x00);
+  } else {
+    ESP_LOGI(TAG, "Turning OFF Wi-Fi LED");
+    this->sendCmd(ToshibaCommandType::WIFI_LED_1, 0x00);
+    this->sendCmd(ToshibaCommandType::WIFI_LED_2, 0x80);
   }
 }
 
