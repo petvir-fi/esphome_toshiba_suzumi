@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
@@ -58,10 +59,14 @@ class ToshibaClimateUart : public PollingComponent, public climate::Climate, pub
   void set_fcu_tcj_temp_sensor(sensor::Sensor *sensor) { fcu_tcj_temp_sensor_ = sensor; }
   void set_fcu_fan_rpm_sensor(sensor::Sensor *sensor) { fcu_fan_rpm_sensor_ = sensor; }
   void set_pwr_select(select::Select *pws_select) { pwr_select_ = pws_select; }
+  void set_vertical_air_direction_select(select::Select *vertical_air_direction_select) {
+    vertical_air_direction_select_ = vertical_air_direction_select;
+  }
+  void set_self_clean_sensor(binary_sensor::BinarySensor *self_clean_sensor) { self_clean_sensor_ = self_clean_sensor; }
   void set_horizontal_swing(bool enabled) { horizontal_swing_ = enabled; }
   void disable_heat_mode(bool disabled) { heat_mode_disabled_ = disabled; }
   void disable_wifi_led(bool disabled) { wifi_led_disabled_ = disabled; }
-  void set_supported_presets(const std::vector<const char*> &presets) { supported_presets_ = presets; }
+  void set_supported_presets(const std::vector<const char *> &presets) { supported_presets_ = presets; }
   void set_min_temp(uint8_t min_temp) { min_temp_ = min_temp; }
 
  protected:
@@ -77,8 +82,12 @@ class ToshibaClimateUart : public PollingComponent, public climate::Climate, pub
   uint32_t last_command_timestamp_ = 0;
   uint32_t last_rx_char_timestamp_ = 0;
   STATE power_state_ = STATE::OFF;
+  // True while the unit is running its post-shutdown self-cleaning cycle.
+  bool self_clean_running_ = false;
   optional<SPECIAL_MODE> special_mode_ = SPECIAL_MODE::STANDARD;
   select::Select *pwr_select_ = nullptr;
+  select::Select *vertical_air_direction_select_ = nullptr;
+  binary_sensor::BinarySensor *self_clean_sensor_ = nullptr;
   sensor::Sensor *indoor_temp_sensor_ = nullptr;
   sensor::Sensor *outdoor_temp_sensor_ = nullptr;
   sensor::Sensor *cdu_td_temp_sensor_ = nullptr;
@@ -105,12 +114,22 @@ class ToshibaClimateUart : public PollingComponent, public climate::Climate, pub
   void getInitData();
   void handle_rx_byte_(uint8_t c);
   bool validate_message_();
+  void set_self_clean_running_(bool running);
   void on_set_pwr_level(const std::string &value);
+  void on_set_vertical_air_direction(const std::string &value);
+  void publish_vertical_air_direction_(SWING swing_mode);
+  void configure_supported_custom_modes_();
 
   friend class ToshibaPwrModeSelect;
+  friend class ToshibaVerticalAirDirectionSelect;
 };
 
 class ToshibaPwrModeSelect : public select::Select, public esphome::Parented<ToshibaClimateUart> {
+ protected:
+  virtual void control(const std::string &value) override;
+};
+
+class ToshibaVerticalAirDirectionSelect : public select::Select, public esphome::Parented<ToshibaClimateUart> {
  protected:
   virtual void control(const std::string &value) override;
 };

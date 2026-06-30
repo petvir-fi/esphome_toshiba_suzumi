@@ -129,6 +129,9 @@ void ToshibaClimateUart::requestData(ToshibaCommandType cmd) {
 void ToshibaClimateUart::getInitData() {
   ESP_LOGD(TAG, "Requesting initial data from AC unit");
   this->requestData(ToshibaCommandType::POWER_STATE);
+  if (this->self_clean_sensor_ != nullptr) {
+    this->requestData(ToshibaCommandType::SELF_CLEAN);
+  }
   this->requestData(ToshibaCommandType::MODE);
   this->requestData(ToshibaCommandType::TARGET_TEMP);
   this->requestData(ToshibaCommandType::FAN);
@@ -139,7 +142,40 @@ void ToshibaClimateUart::getInitData() {
   this->requestData(ToshibaCommandType::SPECIAL_MODE);
 }
 
+void ToshibaClimateUart::set_self_clean_running_(bool running) {
+  this->self_clean_running_ = running;
+  if (this->self_clean_sensor_ != nullptr) {
+    this->self_clean_sensor_->publish_state(running);
+  }
+}
+
+/**
+ * Configure the supported custom modes and presets for the climate component.
+ * This is needed because the Toshiba AC has more FAN levels and presets than the standard climate component supports.
+ * see https://developers.esphome.io/blog/2026/04/09/climate-and-fan-custom-mode-vectors-moved-to-entity/
+ */
+void ToshibaClimateUart::configure_supported_custom_modes_() {
+  // Toshiba AC has more FAN levels than the standard climate component supports.
+  this->set_supported_custom_fan_modes({CUSTOM_FAN_LEVEL_2, CUSTOM_FAN_LEVEL_4});
+
+  // go over all defined presets and filter out the ones that are supported by the climate component
+  if (!this->supported_presets_.empty()) {
+    std::vector<const char *> custom_preset_names;
+    for (const char *preset_string : this->supported_presets_) {
+      if (!StringToClimatePreset(preset_string).has_value()) {
+        // preset is not supported by the climate component, add it to the custom presets
+        custom_preset_names.push_back(preset_string);
+      }
+    }
+    // if there are any custom presets, set them for the climate component
+    if (!custom_preset_names.empty()) {
+      this->set_supported_custom_presets(custom_preset_names);
+    }
+  }
+}
+
 void ToshibaClimateUart::setup() {
+  this->configure_supported_custom_modes_();
   // establish communication
   this->start_handshake();
   // load initial sensor data from the unit
@@ -266,15 +302,26 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
       break;
     }
     case ToshibaCommandType::SWING: {
-      auto swingMode = IntToClimateSwingMode(static_cast<SWING>(value));
-      ESP_LOGI(TAG, "Received swing mode: %s", climate_swing_mode_to_string(swingMode));
-      this->swing_mode = swingMode;
+      auto swing = static_cast<SWING>(value);
+      auto air_direction = SwingToVerticalAirDirection(swing);
+      if (air_direction != nullptr) {
+        ESP_LOGI(TAG, "Received vertical air direction: %s", air_direction);
+        this->publish_vertical_air_direction_(swing);
+      }
+
+      if (IsFixedVerticalAirDirection(swing)) {
+        this->swing_mode = climate::CLIMATE_SWING_OFF;
+      } else {
+        auto swingMode = IntToClimateSwingMode(swing);
+        ESP_LOGI(TAG, "Received swing mode: %s", climate_swing_mode_to_string(swingMode));
+        this->swing_mode = swingMode;
+      }
       break;
     }
     case ToshibaCommandType::MODE: {
       auto mode = IntToClimateMode(static_cast<MODE>(value));
       ESP_LOGI(TAG, "Received AC mode: %s", climate_mode_to_string(mode));
-      if (this->power_state_ == STATE::ON) {
+      if (this->power_state_ == STATE::ON && !this->self_clean_running_) {
         this->mode = mode;
       }
       break;
@@ -282,12 +329,12 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
     case ToshibaCommandType::ROOM_TEMP:
       ESP_LOGI(TAG, "Received room temp: %d °C", value);
       this->current_temperature = value;
-      if (indoor_temp_sensor_ != nullptr) {
+      if (indoor_temp_sensor_ != nullptr && value != 127) {
         indoor_temp_sensor_->publish_state((int8_t) value);
       }
       break;
     case ToshibaCommandType::OUTDOOR_TEMP:
-      if (outdoor_temp_sensor_ != nullptr) {
+      if (outdoor_temp_sensor_ != nullptr && value != 127) {
         ESP_LOGI(TAG, "Received outdoor temp: %d °C", (int8_t) value);
         outdoor_temp_sensor_->publish_state((int8_t) value);
       }
@@ -306,11 +353,49 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
       if (climateState == STATE::OFF) {
         // AC unit was just powered off, set mode to OFF
         this->mode = climate::CLIMATE_MODE_OFF;
+        this->set_self_clean_running_(false);
+      } else if (this->self_clean_running_) {
+        if (this->self_clean_sensor_ != nullptr) {
+          ESP_LOGD(TAG, "Refreshing self-clean status after receiving AC ON state");
+          this->requestData(ToshibaCommandType::SELF_CLEAN);
+        }
       } else if (this->mode == climate::CLIMATE_MODE_OFF && climateState == STATE::ON) {
-        // AC unit was just powered on, query unit for it's MODE
+        // Unit reports ON while we believe it is off, e.g. powered on via IR
+        // remote, or the start of a post-shutdown self-clean cycle. When
+        // self-clean reporting is configured, query it first: the SELF_CLEAN
+        // response is processed before the MODE response below, so a running
+        // cycle keeps the entity OFF (the MODE response is ignored while
+        // self-clean is running).
+        if (this->self_clean_sensor_ != nullptr) {
+          this->requestData(ToshibaCommandType::SELF_CLEAN);
+        }
         this->requestData(ToshibaCommandType::MODE);
       }
       this->power_state_ = climateState;
+      break;
+    }
+    case ToshibaCommandType::SELF_CLEAN: {
+      auto self_clean_state = static_cast<SELF_CLEAN_STATE>(value);
+      bool was_running = this->self_clean_running_;
+      if (self_clean_state == SELF_CLEAN_STATE::RUNNING) {
+        ESP_LOGI(TAG, "Self-clean is running");
+        this->set_self_clean_running_(true);
+        this->mode = climate::CLIMATE_MODE_OFF;
+      } else if (self_clean_state == SELF_CLEAN_STATE::OFF) {
+        ESP_LOGI(TAG, "Self-clean is stopped");
+        this->set_self_clean_running_(false);
+        if (was_running) {
+          // The cycle ended: either it finished (unit now off) or it was
+          // interrupted by switching the unit back on. The self-clean register
+          // doesn't distinguish these, and the unit only reports power state on
+          // change/query (not continuously), so the cached value may be stale.
+          // Query the power state to resync; the POWER_STATE handler refreshes
+          // the mode when the unit turns out to be on.
+          this->requestData(ToshibaCommandType::POWER_STATE);
+        }
+      } else {
+        ESP_LOGW(TAG, "Received unknown self-clean state: %d", value);
+      }
       break;
     }
     case ToshibaCommandType::SPECIAL_MODE: {
@@ -408,6 +493,12 @@ void ToshibaClimateUart::dump_config() {
   if (pwr_select_ != nullptr) {
     LOG_SELECT("", "Power selector", this->pwr_select_);
   }
+  if (vertical_air_direction_select_ != nullptr) {
+    LOG_SELECT("", "Vertical air direction", this->vertical_air_direction_select_);
+  }
+  if (self_clean_sensor_ != nullptr) {
+    LOG_BINARY_SENSOR("", "Self Clean", this->self_clean_sensor_);
+  }
   if (!supported_presets_.empty()) {
     ESP_LOGCONFIG(TAG, "Supported presets:");
     for (const char* &preset : supported_presets_) {
@@ -427,12 +518,18 @@ void ToshibaClimateUart::update() {
   if (outdoor_temp_sensor_ != nullptr) {
     this->requestData(ToshibaCommandType::OUTDOOR_TEMP);
   }
+  if (this->self_clean_running_) {
+    this->requestData(ToshibaCommandType::SELF_CLEAN);
+  }
 }
 
 void ToshibaClimateUart::control(const climate::ClimateCall &call) {
   if (call.get_mode().has_value()) {
     ClimateMode mode = *call.get_mode();
     ESP_LOGD(TAG, "Setting mode to %s", climate_mode_to_string(mode));
+    if (mode != CLIMATE_MODE_OFF) {
+      this->set_self_clean_running_(false);
+    }
     if (this->mode == CLIMATE_MODE_OFF && mode != CLIMATE_MODE_OFF) {
       ESP_LOGD(TAG, "Setting AC unit power state to ON.");
       this->sendCmd(ToshibaCommandType::POWER_STATE, static_cast<uint8_t>(STATE::ON));
@@ -506,6 +603,7 @@ void ToshibaClimateUart::control(const climate::ClimateCall &call) {
     ESP_LOGD(TAG, "Setting swing mode to %s", climate_swing_mode_to_string(swing_mode));
     this->swing_mode = swing_mode;
     this->sendCmd(ToshibaCommandType::SWING, static_cast<uint8_t>(function_value));
+    this->publish_vertical_air_direction_(function_value);
   }
 
   if (call.get_preset().has_value()) {
@@ -608,27 +706,19 @@ ClimateTraits ToshibaClimateUart::traits() {
   traits.add_supported_fan_mode(CLIMATE_FAN_LOW);
   traits.add_supported_fan_mode(CLIMATE_FAN_MEDIUM);
   traits.add_supported_fan_mode(CLIMATE_FAN_HIGH);
-  traits.set_supported_custom_fan_modes({CUSTOM_FAN_LEVEL_2, CUSTOM_FAN_LEVEL_4});
 
   traits.set_visual_temperature_step(1);
   traits.set_visual_min_temperature(this->min_temp_);
   traits.set_visual_max_temperature(MAX_TEMP);
 
-  // Add supported presets based on configuration
-  if (!supported_presets_.empty()) {
-    std::vector<const char*> custom_preset_names;
-    // Presets are automatically enabled when adding supported presets
-    for (const char* &preset_string : supported_presets_) {
-      climate::ClimatePreset climate_preset = StringToClimatePreset(preset_string);
-      if (climate_preset != climate::CLIMATE_PRESET_NONE || preset_string == SPECIAL_MODE_STANDARD) {
-        // Use standard presets for mapped modes
-        traits.add_supported_preset(climate_preset);
-      } else {
-        custom_preset_names.push_back(preset_string);
+  // Add supported standard presets based on configuration (custom presets are set in setup())
+  if (!this->supported_presets_.empty()) {
+    for (const char *preset_string : this->supported_presets_) {
+      auto climate_preset = StringToClimatePreset(preset_string);
+      if (climate_preset.has_value()) {
+        // preset is supported by the climate component
+        traits.add_supported_preset(*climate_preset);
       }
-    }
-    if (!custom_preset_names.empty()) {
-      traits.set_supported_custom_presets(custom_preset_names);
     }
   }
   return traits;
@@ -642,6 +732,36 @@ void ToshibaClimateUart::on_set_pwr_level(const std::string &value) {
 }
 
 void ToshibaPwrModeSelect::control(const std::string &value) { parent_->on_set_pwr_level(value); }
+
+void ToshibaClimateUart::on_set_vertical_air_direction(const std::string &value) {
+  auto position = StringToVerticalAirDirection(value);
+  if (!position.has_value()) {
+    ESP_LOGW(TAG, "Unknown vertical air direction: %s", value.c_str());
+    return;
+  }
+
+  ESP_LOGD(TAG, "Setting vertical air direction to %s", value.c_str());
+  this->sendCmd(ToshibaCommandType::SWING, static_cast<uint8_t>(position.value()));
+  this->publish_vertical_air_direction_(position.value());
+  if (position.value() == SWING::VERTICAL || position.value() == SWING::BOTH) {
+    this->swing_mode = climate::CLIMATE_SWING_VERTICAL;
+  } else {
+    this->swing_mode = climate::CLIMATE_SWING_OFF;
+  }
+  this->publish_state();
+}
+
+void ToshibaClimateUart::publish_vertical_air_direction_(SWING swing_mode) {
+  if (vertical_air_direction_select_ == nullptr) {
+    return;
+  }
+  auto position = SwingToVerticalAirDirection(swing_mode);
+  if (position != nullptr) {
+    vertical_air_direction_select_->publish_state(position);
+  }
+}
+
+void ToshibaVerticalAirDirectionSelect::control(const std::string &value) { parent_->on_set_vertical_air_direction(value); }
 
 /**
  * Scan all statuses from 128 to 255 in order to find unknown features.
