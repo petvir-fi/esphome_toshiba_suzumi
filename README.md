@@ -116,16 +116,26 @@ uart:
   parity: EVEN
   baud_rate: 9600
 
+# Optional. Required only if the energy/power sensor feature is enabled.
+# time:
+#   - platform: homeassistant
+#     id: hass_time
+
 climate:
   - platform: toshiba_suzumi
     name: living-room
     id: living_room
     uart_id: uart_bus
+    #time_id: hass_time  # Optional. Required only if the energy/power sensor feature is enabled.
+    #time_sync_interval: 24h  # Optional. Time sync interval. Default 24h. Set to 0 to sync only at startup.
+    #energy:  # Optional. Daily energy consumption sensor (Wh).
+    #  name: "Daily Energy"
+    #power:  # Optional. Estimated real-time power sensor (W).
+    #  name: "Realtime Power"
+    #indoor_temp:        # Optional. Indoor temperature sensor
+    #  name: Indoor Temp
     outdoor_temp:        # Optional. Outdoor temperature sensor
       name: Outdoor Temp
-      filters:
-        # Filter out value 127 as that's what unit sends when it can's measure the outside temp.
-        - filter_out: 127 
     power_select:
       name: "Power level"
     #vertical_air_direction: # Optional. Fixed vertical air direction.
@@ -180,17 +190,19 @@ You can then create a Thermostat card on the dashboard.
 Homeassistant thermostat component is by default set with a range of 17-30°C.
 If your unit is equipped with "8 degress" aka FrostGuard, you can enable that in YAML configuration (Supported presets). The range is then automatically set to 5-30°C and when you set target temp above 17°C, it will switch to Standard mode, when you set target temp below 17°C, it will switch automatically to FrostGuard.
 
-## Filter some oustide temp value
+## Filtering incorrect values (127 / 254 / 255)
 
-It has been reported that some AC units send temp value 127 when the unit does not know the temp or using only Fan mode without external unit running. This mess up graphs in HomeAssistant.
+The component automatically filters out incorrect sensor readings at the code level:
+- Temperature readings of `127` (which the unit transmits when it cannot measure the temperature or when it is off) are ignored.
+- Compressor load and current values of `254` or `255` are also ignored.
 
-You can filter unwanted values by adding a filter to Outside temp sensor:
+Therefore, you do not need to add manual filters in your YAML configuration for these values. However, if you need to filter out other values, you can still add ESPHome filters like this:
 
 ```yaml
     outdoor_temp:
       name: Outdoor Temp
       filters:
-        - filter_out: 127 
+        - filter_out: 127
 ```
 
 ### Vertical air directions
@@ -242,9 +254,30 @@ Some Toshiba AC units periodically send extended status messages from the outdoo
 
 These sensors are all optional — only add the ones you need to your YAML configuration. The data arrives automatically from the unit (no polling required).
 
-### Estimating power consumption
+### Native Energy and Power monitoring
 
-The AC protocol does not report actual power consumption in watts. However, `cdu_load` reports the compressor load as a percentage, which correlates with power usage. You can combine it with your unit's rated power input to estimate consumption in Home Assistant using a template sensor:
+If your AC unit supports it, you can now get native energy consumption data. This requires adding a `time` component to your configuration so the component can sync the current time with the AC unit.
+
+```yaml
+time:
+  - platform: homeassistant
+    id: hass_time
+
+climate:
+  - platform: toshiba_suzumi
+    # ...
+    time_id: hass_time
+    energy:
+      name: "Daily Energy"
+    power:
+      name: "Realtime Power"
+```
+
+The `power` sensor provides a real-time estimate in Watts, calculated from the rate of change in the AC's internal energy counters.
+
+### Estimating power consumption (Fallback)
+
+For older units that do not support the native energy registers, you can still estimate power using `cdu_load`. `cdu_load` reports the compressor load as a percentage, which correlates with power usage. You can combine it with your unit's rated power input to estimate consumption in Home Assistant using a template sensor:
 
 ```yaml
 sensor:
