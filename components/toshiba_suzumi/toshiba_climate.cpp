@@ -127,7 +127,7 @@ void ToshibaClimateUart::sendCmd(ToshibaCommandType cmd, uint8_t value) {
   payload.push_back(static_cast<uint8_t>(cmd));
   payload.push_back(value);
   payload.push_back(checksum(payload, payload.size()));
-  ESP_LOGD(TAG, "Sending ToshibaCommand: %d, value: %d, checksum: %d", cmd, value, payload[14]);
+  ESP_LOGD(TAG, "Sending ToshibaCommand: %d, value: %d, checksum: %d", static_cast<int>(cmd), value, payload[14]);
   this->enqueue_command_(ToshibaCommand{.cmd = cmd, .payload = std::vector<uint8_t>{payload}});
 }
 
@@ -362,14 +362,14 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
         this->swing_mode = climate::CLIMATE_SWING_OFF;
       } else {
         auto swingMode = IntToClimateSwingMode(swing);
-        ESP_LOGI(TAG, "Received swing mode: %s", climate_swing_mode_to_string(swingMode));
+        ESP_LOGI(TAG, "Received swing mode: %s", LOG_STR_ARG(climate_swing_mode_to_string(swingMode)));
         this->swing_mode = swingMode;
       }
       break;
     }
     case ToshibaCommandType::MODE: {
       auto mode = IntToClimateMode(static_cast<MODE>(value));
-      ESP_LOGI(TAG, "Received AC mode: %s", climate_mode_to_string(mode));
+      ESP_LOGI(TAG, "Received AC mode: %s", LOG_STR_ARG(climate_mode_to_string(mode)));
       if (this->power_state_ == STATE::ON && !this->self_clean_running_) {
         this->mode = mode;
       }
@@ -402,7 +402,7 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
     }
     case ToshibaCommandType::POWER_STATE: {
       auto climateState = static_cast<STATE>(value);
-      ESP_LOGI(TAG, "Received AC unit power state: %s", climate_state_to_string(climateState));
+      ESP_LOGI(TAG, "Received AC unit power state: %s", LOG_STR_ARG(climate_state_to_string(climateState)));
       if (climateState == STATE::OFF) {
         // AC unit was just powered off, set mode to OFF
         this->mode = climate::CLIMATE_MODE_OFF;
@@ -527,7 +527,7 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
       break;
     }
     default:
-      ESP_LOGW(TAG, "Unknown sensor: %d with value %d", sensor, value);
+      ESP_LOGW(TAG, "Unknown sensor: %d with value %d", static_cast<int>(sensor), value);
       break;
   }
   this->rx_message_.clear();  // message processed, clear buffer
@@ -620,7 +620,7 @@ void ToshibaClimateUart::update() {
 void ToshibaClimateUart::control(const climate::ClimateCall &call) {
   if (call.get_mode().has_value()) {
     ClimateMode mode = *call.get_mode();
-    ESP_LOGD(TAG, "Setting mode to %s", climate_mode_to_string(mode));
+    ESP_LOGD(TAG, "Setting mode to %s", LOG_STR_ARG(climate_mode_to_string(mode)));
     if (mode != CLIMATE_MODE_OFF) {
       this->set_self_clean_running_(false);
     }
@@ -673,7 +673,7 @@ void ToshibaClimateUart::control(const climate::ClimateCall &call) {
 
   if (call.get_fan_mode().has_value()) {
     auto fan_mode = *call.get_fan_mode();
-    ESP_LOGD(TAG, "Setting fan mode to %s", climate_fan_mode_to_string(fan_mode));
+    ESP_LOGD(TAG, "Setting fan mode to %s", LOG_STR_ARG(climate_fan_mode_to_string(fan_mode)));
     this->set_fan_mode_(fan_mode);
     auto fan_value = ClimateFanModeToInt(fan_mode);
     if (fan_value.has_value()) {
@@ -694,7 +694,7 @@ void ToshibaClimateUart::control(const climate::ClimateCall &call) {
   if (call.get_swing_mode().has_value()) {
     auto swing_mode = *call.get_swing_mode();
     auto function_value = ClimateSwingModeToInt(swing_mode);
-    ESP_LOGD(TAG, "Setting swing mode to %s", climate_swing_mode_to_string(swing_mode));
+    ESP_LOGD(TAG, "Setting swing mode to %s", LOG_STR_ARG(climate_swing_mode_to_string(swing_mode)));
     this->swing_mode = swing_mode;
     this->sendCmd(ToshibaCommandType::SWING, static_cast<uint8_t>(function_value));
     this->publish_vertical_air_direction_(function_value);

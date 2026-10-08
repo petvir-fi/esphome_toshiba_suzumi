@@ -9,7 +9,7 @@ This component use ESPHome UART to connect with Toshiba AC and communicates dire
 <a href="https://www.buymeacoffee.com/pedobryk" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ## ESPHome versions
-Current main branch supports latest ESPHome **2026.1**. There have been some internal changes in climate entity in ESPHome which makes it incompatible with previous ESPHome versions.
+Current main branch supports ESPHome **2026.1** and later, and has been verified with ESPHome **2026.9.1**. It is also ready for ESPHome **2026.11.0**, which removes the old way of setting custom fan modes and presets. There have been some internal changes in climate entity in ESPHome which makes it incompatible with versions before 2026.1.
 
 If you use ESPHome **2025.10 or earlier**, use tag `2025.10` like this:
 

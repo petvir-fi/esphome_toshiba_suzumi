@@ -37,8 +37,8 @@ static const std::vector<uint8_t> AFTER_HANDSHAKE[2] = {
 
 struct ToshibaCommand {
   ToshibaCommandType cmd;
-  std::vector<uint8_t> payload;
-  int delay;
+  std::vector<uint8_t> payload{};
+  int delay{0};
 };
 
 class ToshibaClimateUart : public PollingComponent, public climate::Climate, public uart::UARTDevice {

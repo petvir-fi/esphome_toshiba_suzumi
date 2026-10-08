@@ -6,7 +6,7 @@
 namespace esphome {
 namespace toshiba_suzumi {
 
-const MODE ClimateModeToInt(climate::ClimateMode mode) {
+MODE ClimateModeToInt(climate::ClimateMode mode) {
   switch (mode) {
     case climate::CLIMATE_MODE_HEAT_COOL:
       return MODE::HEAT_COOL;
@@ -24,7 +24,7 @@ const MODE ClimateModeToInt(climate::ClimateMode mode) {
   }
 }
 
-const climate::ClimateMode IntToClimateMode(MODE mode) {
+climate::ClimateMode IntToClimateMode(MODE mode) {
   switch (mode) {
     case MODE::HEAT_COOL:
       return climate::CLIMATE_MODE_HEAT_COOL;
@@ -145,7 +145,7 @@ bool IsFixedVerticalAirDirection(SWING mode) {
          value <= static_cast<uint8_t>(SWING::VERTICAL_FIX_POSITION_5);
 }
 
-const SWING ClimateSwingModeToInt(climate::ClimateSwingMode mode) {
+SWING ClimateSwingModeToInt(climate::ClimateSwingMode mode) {
   switch (mode) {
     case climate::CLIMATE_SWING_OFF:
       return SWING::OFF;
@@ -161,7 +161,7 @@ const SWING ClimateSwingModeToInt(climate::ClimateSwingMode mode) {
   }
 }
 
-const climate::ClimateSwingMode IntToClimateSwingMode(SWING mode) {
+climate::ClimateSwingMode IntToClimateSwingMode(SWING mode) {
   switch (mode) {
     case SWING::OFF:
       return climate::CLIMATE_SWING_OFF;
@@ -172,7 +172,7 @@ const climate::ClimateSwingMode IntToClimateSwingMode(SWING mode) {
     case SWING::BOTH:
       return climate::CLIMATE_SWING_BOTH;
     default:
-      ESP_LOGE(TAG, "Invalid swing mode %d.", mode);
+      ESP_LOGE(TAG, "Invalid swing mode %d.", static_cast<int>(mode));
       return climate::CLIMATE_SWING_OFF;
   }
 }

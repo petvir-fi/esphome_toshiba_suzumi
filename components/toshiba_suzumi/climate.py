@@ -16,13 +16,7 @@ from esphome.const import (
     DEVICE_CLASS_POWER,
     CONF_TIME_ID,
     STATE_CLASS_TOTAL_INCREASING,
-    __version__ as ESPHOME_VERSION
 )
-from packaging import version
-import logging
-
-_LOGGER = logging.getLogger(__name__)
-
 DEPENDENCIES = ["uart"]
 AUTO_LOAD = ["binary_sensor", "sensor", "select"]
 
