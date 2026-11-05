@@ -1,6 +1,7 @@
 #include "toshiba_climate_mode.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
 #include "toshiba_climate.h"
 
 namespace esphome {
@@ -48,9 +49,16 @@ climate::ClimateMode IntToClimateMode(MODE mode) {
  * @return The Toshiba fan mode code
  */
 const optional<FAN> StringToFanLevel(const char* mode) {
-  if (mode == CUSTOM_FAN_LEVEL_2) {
+  // Compare string contents, not pointers: the mode string coming from a
+  // ClimateCall is a different buffer than the CUSTOM_FAN_LEVEL_* literals,
+  // so a pointer comparison never matched and Low-Medium / Medium-High were
+  // silently ignored. Fix adapted from dennisvo/esphome_toshiba_suzumi.
+  if (mode == nullptr) {
+    return nullopt;
+  }
+  if (str_equals_case_insensitive(mode, CUSTOM_FAN_LEVEL_2)) {
     return FAN::FANMODE_2;
-  } else if (mode == CUSTOM_FAN_LEVEL_4) {
+  } else if (str_equals_case_insensitive(mode, CUSTOM_FAN_LEVEL_4)) {
     return FAN::FANMODE_4;
   } else {
     return nullopt;

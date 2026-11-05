@@ -1,4 +1,9 @@
 ***
+Nov 5th 2026
+
+* fix: custom fan modes "Low-Medium" and "Medium-High" were ignored when set from Home Assistant. StringToFanLevel() compared string pointers instead of string contents, so it never matched. It now compares the text (case-insensitive). Fix adapted from dennisvo/esphome_toshiba_suzumi.
+
+***
 Oct 8th 2026
 
 * verified against ESPHome 2026.9.1: config validation passes for ESP32 (Arduino and ESP-IDF) and ESP8266, and the component compiles with no errors and no deprecation warnings.
