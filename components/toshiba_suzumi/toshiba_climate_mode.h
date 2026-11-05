@@ -94,11 +94,11 @@ enum class ToshibaCommandType : uint8_t {
   ODU_STATUS = 0xE5,   // 229 - Outdoor unit status (unsolicited)
 };
 
-const MODE ClimateModeToInt(climate::ClimateMode mode);
-const climate::ClimateMode IntToClimateMode(MODE mode);
+MODE ClimateModeToInt(climate::ClimateMode mode);
+climate::ClimateMode IntToClimateMode(MODE mode);
 
-const SWING ClimateSwingModeToInt(climate::ClimateSwingMode mode);
-const climate::ClimateSwingMode IntToClimateSwingMode(SWING mode);
+SWING ClimateSwingModeToInt(climate::ClimateSwingMode mode);
+climate::ClimateSwingMode IntToClimateSwingMode(SWING mode);
 
 const optional<FAN> ClimateFanModeToInt(climate::ClimateFanMode mode);
 

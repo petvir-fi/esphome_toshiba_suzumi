@@ -1,4 +1,17 @@
 ***
+Oct 8th 2026
+
+* verified against ESPHome 2026.9.1: config validation passes for ESP32 (Arduino and ESP-IDF) and ESP8266, and the component compiles with no errors and no deprecation warnings.
+* ready for ESPHome 2026.11.0, which removes setting custom fan modes and custom presets through ClimateTraits. This component already uses the replacement methods on the Climate entity, so no change was needed.
+* code cleanup, no behaviour change:
+    - log messages now wrap LogString values (climate_mode_to_string() and similar) in LOG_STR_ARG(), the form ESPHome expects for strings stored in flash
+    - enum values printed with %d are now cast to int
+    - ToshibaCommand fields payload and delay now have default values (empty and 0), so commands that set only one of them are fully initialised
+    - removed the meaningless const from enum return types in toshiba_climate_mode.h/.cpp
+    - removed unused imports (ESPHome __version__, packaging.version, logging) from climate.py
+* together these remove all compiler warnings from the component (GCC 13, -Wall -Wextra).
+
+***
 Sep 10th 2025
 
 * implement Special modes as Climate presets instead of HA selector. Due to backward compatibility, the list of special modes can be either as new "supported_presets" YAML option, or the old "supported_modes" option. I recommend to migrate to the new config schema as the old one will be removed in the future.
