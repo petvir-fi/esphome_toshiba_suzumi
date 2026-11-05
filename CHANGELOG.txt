@@ -1,6 +1,7 @@
 ***
 Nov 5th 2026
 
+* fix: outdoor unit sensors no longer keep their last running values after the AC unit is switched off. When the unit reports power off, CDU load and CDU IAC (current) are set to 0, and the CDU Td/Ts/Te temperatures become unknown. Previously the outdoor unit only sent invalid values (127/254) when stopped, which were skipped, so e.g. the current stayed at its last running value.
 * fix: custom fan modes "Low-Medium" and "Medium-High" were ignored when set from Home Assistant. StringToFanLevel() compared string pointers instead of string contents, so it never matched. It now compares the text (case-insensitive). Fix adapted from dennisvo/esphome_toshiba_suzumi.
 
 ***

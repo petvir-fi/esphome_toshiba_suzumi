@@ -1,6 +1,8 @@
 #include "toshiba_climate.h"
 #include "toshiba_climate_mode.h"
 #include "esphome/core/log.h"
+#include <cmath>
+#include <initializer_list>
 #ifdef USE_TIME
 #include "esphome/components/time/real_time_clock.h"
 #endif
@@ -162,6 +164,27 @@ void ToshibaClimateUart::set_self_clean_running_(bool running) {
   this->self_clean_running_ = running;
   if (this->self_clean_sensor_ != nullptr) {
     this->self_clean_sensor_->publish_state(running);
+  }
+}
+
+/**
+ * Reset the outdoor unit (ODU) sensors when the AC unit is off.
+ * When the unit stops, the outdoor unit only reports invalid values (127 / 254),
+ * which are skipped, so the last running values would stay published forever.
+ * Load and current are really zero when the unit is off; the refrigerant
+ * temperatures have no meaningful value, so they become unknown (NAN).
+ */
+void ToshibaClimateUart::reset_odu_sensors_() {
+  if (this->cdu_load_sensor_ != nullptr && this->cdu_load_sensor_->get_state() != 0.0f) {
+    this->cdu_load_sensor_->publish_state(0.0f);
+  }
+  if (this->cdu_iac_sensor_ != nullptr && this->cdu_iac_sensor_->get_state() != 0.0f) {
+    this->cdu_iac_sensor_->publish_state(0.0f);
+  }
+  for (auto *s : {this->cdu_td_temp_sensor_, this->cdu_ts_temp_sensor_, this->cdu_te_temp_sensor_}) {
+    if (s != nullptr && !std::isnan(s->get_state())) {
+      s->publish_state(NAN);
+    }
   }
 }
 
@@ -407,6 +430,7 @@ void ToshibaClimateUart::parseResponse(std::vector<uint8_t> rawData) {
         // AC unit was just powered off, set mode to OFF
         this->mode = climate::CLIMATE_MODE_OFF;
         this->set_self_clean_running_(false);
+        this->reset_odu_sensors_();
       } else if (this->self_clean_running_) {
         if (this->self_clean_sensor_ != nullptr) {
           ESP_LOGD(TAG, "Refreshing self-clean status after receiving AC ON state");
